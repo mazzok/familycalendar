@@ -61,7 +61,6 @@ keytool -list -v -keystore familycalendar-release.jks -alias familycalendar | gr
 |---|---|
 | `ANDROID_KEYSTORE_BASE64` | The keystore file, base64-encoded (see below) |
 | `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_ALIAS` | `familycalendar` (the `-alias` above) |
 | `ANDROID_KEY_PASSWORD` | Key password (same as the keystore password for PKCS12) |
 | `GOOGLE_SERVICES_JSON_BASE64` | `app/google-services.json`, base64-encoded |
 
@@ -85,16 +84,22 @@ base64 -w0 app/google-services.json  | gh secret set GOOGLE_SERVICES_JSON_BASE64
 
 `GITHUB_TOKEN` is provided automatically. Do not create it.
 
-### 3. Add the certificate fingerprint variable (recommended)
+### 3. Add repository variables
 
 **Settings → Secrets and variables → Actions → Variables → New repository variable**
 
 | Variable | Value |
 |---|---|
-| `ANDROID_CERT_SHA256` | SHA-256 fingerprint from step 1, e.g. `2B:4E:7D:…` (colons and case don't matter) |
+| `ANDROID_SIGNING_ALIAS` | `familycalendar` (the `-alias` above) |
+| `ANDROID_CERT_SHA256` | Recommended: SHA-256 fingerprint from step 1, e.g. `2B:4E:7D:…` (colons and case don't matter) |
 
-If the variable is set, a build signed with any other key fails before the release step. This guards
-against a secret that was replaced by mistake. If the variable is not set, this check is skipped.
+The alias is not secret, so it is a variable. Don't store it as a secret or under a name containing
+`KEY`: semantic-release and GitHub mask such values in logs and release notes. With the alias
+`familycalendar`, that would also mask the repository name in every link.
+
+If `ANDROID_CERT_SHA256` is set, a build signed with any other key fails before the release step.
+This guards against a secret that was replaced by mistake. If the variable is not set, this check is
+skipped.
 
 ### 4. Check repository settings
 
@@ -143,7 +148,8 @@ fails the build if MINOR or PATCH exceeds 999 or MAJOR exceeds 2099. MINOR and P
 every bump, so that limit is not reached in practice.
 
 Local builds without `-PreleaseVersion` keep `versionName "1.0"` and `versionCode 1`. To reproduce a CI
-build locally (bash, with `ANDROID_HOME` and the `ANDROID_KEYSTORE_*` / `ANDROID_KEY_*` variables set):
+build locally (bash, with `ANDROID_HOME` and the `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_SIGNING_ALIAS` and
+`ANDROID_KEY_PASSWORD` set):
 
 ```
 bash scripts/build-release-apk.sh 1.4.2

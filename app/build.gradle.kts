@@ -40,7 +40,7 @@ android {
             create("release") {
                 storeFile = file(keystorePath)
                 storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").get()
-                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").get()
+                keyAlias = providers.environmentVariable("ANDROID_SIGNING_ALIAS").get()
                 keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").get()
             }
         }

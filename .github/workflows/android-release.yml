@@ -73,7 +73,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          # Not a secret, and named without "key": semantic-release masks values of such variables,
+          # and this one equals the repository name.
+          ANDROID_SIGNING_ALIAS: ${{ vars.ANDROID_SIGNING_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           EXPECTED_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: npx semantic-release
