@@ -1,0 +1,106 @@
+rules_version = '2';
+
+// Data layout:
+//   users/{uid}                          profile, looked up by email when sharing
+//   calendars/{ownerId}/events/{id}      the owner's events
+//   calendars/{ownerId}/viewers/{uid}    sharing invitations; status "pending" until the invitee accepts
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /calendars/{ownerId} {
+      function isOwner() {
+        return signedIn() && request.auth.uid == ownerId;
+      }
+
+      // Only an accepted invitation grants access; nobody can push a calendar onto someone else.
+      function isViewer() {
+        let path = /databases/$(database)/documents/calendars/$(ownerId)/viewers/$(request.auth.uid);
+        return signedIn() && exists(path) && get(path).data.get('status', 'pending') == 'accepted';
+      }
+
+      match /events/{eventId} {
+        function validEvent() {
+          let e = request.resource.data;
+          return e.ownerId == ownerId && e.title is string && e.start is timestamp && e.end is timestamp;
+        }
+
+        // Date requests: the owner may only ever (re)open a request; answering is up to the requested person.
+        function newStatus() {
+          return request.resource.data.get('requestStatus', null);
+        }
+
+        // What the requested person agreed to: date, time, all-day and the repeat rule.
+        function sameWhen() {
+          let a = request.resource.data;
+          let b = resource.data;
+          return a.start == b.start && a.end == b.end
+            && a.get('allDay', false) == b.get('allDay', false)
+            && a.get('repeat', 'NONE') == b.get('repeat', 'NONE')
+            && a.get('repeatInterval', 1) == b.get('repeatInterval', 1)
+            && a.get('repeatWeekdays', []) == b.get('repeatWeekdays', [])
+            && a.get('repeatMonthlyOrdinal', 0) == b.get('repeatMonthlyOrdinal', 0)
+            && a.get('repeatUntil', null) == b.get('repeatUntil', null);
+        }
+
+        // Answers belong to the requested person: the owner never sets them, reopening may only clear them.
+        function newDeclined() {
+          return request.resource.data.get('declinedDates', []);
+        }
+        function answerUntouched() {
+          return request.resource.data.get('answerSeq', 0) == resource.data.get('answerSeq', 0)
+            && request.resource.data.get('lastAnswer', '') == resource.data.get('lastAnswer', '');
+        }
+
+        allow read: if isOwner() || isViewer();
+        allow create: if isOwner() && validEvent() && newStatus() in [null, 'pending']
+          && newDeclined() == [] && request.resource.data.get('answerSeq', 0) == 0;
+        // Owner edits keep an existing answer only if who and when are unchanged; otherwise the request reopens.
+        allow update: if isOwner() && validEvent() && answerUntouched() && (
+          (newStatus() in [null, 'pending'] && newDeclined() in [[], resource.data.get('declinedDates', [])]) || (
+            newStatus() == resource.data.get('requestStatus', null)
+            && newDeclined() == resource.data.get('declinedDates', [])
+            && request.resource.data.get('requestedUid', null) == resource.data.get('requestedUid', null)
+            && sameWhen()
+          )
+        );
+        // The requested person answers (whole series or single dates); nothing else may change.
+        allow update: if isViewer()
+          && request.auth.uid == resource.data.get('requestedUid', null)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['requestStatus', 'declinedDates', 'answerSeq', 'lastAnswer'])
+          && (newStatus() == resource.data.get('requestStatus', null) || newStatus() in ['accepted', 'declined']);
+        allow delete: if isOwner();
+      }
+
+      match /viewers/{viewerUid} {
+        allow read: if isOwner() || (signedIn() && request.auth.uid == viewerUid);
+        // The owner can only invite; the invitation starts out pending.
+        allow create: if isOwner()
+          && viewerUid != ownerId
+          && request.resource.data.ownerId == ownerId
+          && request.resource.data.viewerUid == viewerUid
+          && request.resource.data.status == 'pending';
+        // Only the invitee can accept, and accepting may change nothing but the status.
+        allow update: if signedIn() && request.auth.uid == viewerUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.status == 'accepted';
+        // The owner can revoke or withdraw; the invitee can decline or leave.
+        allow delete: if isOwner() || (signedIn() && request.auth.uid == viewerUid);
+      }
+    }
+
+    // Collection-group query "which calendars were shared with me (incl. invitations)?"
+    match /{path=**}/viewers/{viewerUid} {
+      allow read: if signedIn() && resource.data.viewerUid == request.auth.uid;
+    }
+  }
+}
