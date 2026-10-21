@@ -2,7 +2,8 @@ rules_version = '2';
 
 // Data layout:
 //   users/{uid}                          profile, looked up by email when sharing
-//   calendars/{ownerId}/events/{id}      the owner's events
+//   calendars/{ownerId}/events/{id}      the owner's events; kind "checklist" = standalone checklist,
+//                                        map field "checklist" = shared items anyone with access may edit
 //   calendars/{ownerId}/viewers/{uid}    sharing invitations; status "pending" until the invitee accepts
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -78,6 +79,10 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['requestStatus', 'declinedDates', 'answerSeq', 'lastAnswer'])
           && (newStatus() == resource.data.get('requestStatus', null) || newStatus() in ['accepted', 'declined']);
+        // Shared checklists: anyone who can see the calendar ticks and edits items; nothing else changes.
+        allow update: if isViewer()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checklist'])
+          && request.resource.data.checklist is map;
         allow delete: if isOwner();
       }
 

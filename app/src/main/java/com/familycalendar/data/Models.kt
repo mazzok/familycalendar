@@ -35,6 +35,33 @@ data class Recurrence(
 
 enum class RequestStatus { PENDING, ACCEPTED, DECLINED }
 
+/** A normal event, or a standalone checklist ("check-it"): title, due date and items only. */
+enum class EventKind { EVENT, CHECKLIST }
+
+/** One entry of a shared checklist. Anyone who can see the calendar may tick or edit it. */
+data class ChecklistItem(
+    val id: String,
+    val text: String,
+    /** Sort hint; new items go to the bottom. */
+    val order: Long = 0,
+    /** Who ticked it; `null` = open. */
+    val checkedBy: String? = null,
+    val checkedByName: String = "",
+    /** `null` while ticked offline and not yet stamped by the server. */
+    val checkedAt: Instant? = null,
+) : Serializable {
+    val checked: Boolean get() = checkedBy != null
+}
+
+/** Trimmed item text, or `null` if there is nothing to keep. */
+fun itemText(raw: String): String? = raw.trim().takeIf { it.isNotEmpty() }
+
+/** Appends [raw] as a new open item at the bottom; blank text leaves the list as it is. */
+fun List<ChecklistItem>.plusItem(raw: String, id: String): List<ChecklistItem> {
+    val text = itemText(raw) ?: return this
+    return this + ChecklistItem(id = id, text = text, order = maxOfOrNull { it.order }?.plus(1) ?: 0)
+}
+
 /** An event series as stored in Firestore; a non-repeating event is a series of one. */
 data class CalendarEvent(
     val id: String = "",
@@ -68,8 +95,22 @@ data class CalendarEvent(
      * "cancelled" from "no longer visible" and notify them.
      */
     val cancelledAt: Instant? = null,
+    val kind: EventKind = EventKind.EVENT,
+    /** Shared checklist, sorted by order; written item by item, never by the owner's form save. */
+    val checklist: List<ChecklistItem> = emptyList(),
 ) {
     val cancelled: Boolean get() = cancelledAt != null
+    val isChecklist: Boolean get() = kind == EventKind.CHECKLIST
+    val hasChecklist: Boolean get() = checklist.isNotEmpty()
+    val checklistDone: Int get() = checklist.count { it.checked }
+    /** Every item ticked; an empty list is never complete. */
+    val checklistComplete: Boolean get() = checklist.isNotEmpty() && checklist.all { it.checked }
+
+    /** The most recently ticked item; one still waiting for its server time counts as newest. */
+    fun lastTicked(): ChecklistItem? =
+        checklist.filter { it.checked }.maxWithOrNull(compareBy(nullsLast()) { it.checkedAt })
+
+    fun nextItemOrder(): Long = checklist.maxOfOrNull { it.order }?.plus(1) ?: 0
     /** Unique across all calendars. */
     val key: String get() = "$ownerId/$id"
 

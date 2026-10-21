@@ -75,6 +75,20 @@ fun occurrencesByDay(occurrences: List<Occurrence>, range: ClosedRange<LocalDate
 
 fun Map<String, Int>.colorFor(ownerId: String) = paletteColor(this[ownerId])
 
+/**
+ * Color of a checkmark: the color of the ticking person's calendar on this phone, or, if their calendar
+ * isn't visible here, a stable color derived from their uid.
+ */
+fun Map<String, Int>.checkColor(uid: String): CalendarColor =
+    paletteColor(this[uid] ?: uid.hashCode().mod(CalendarPalette.size))
+
+/** Title as shown in the calendar: a standalone checklist shows its progress, an attached one a mark. */
+fun displayTitle(event: CalendarEvent): String = when {
+    event.isChecklist -> "☑ ${event.title} ${event.checklistDone}/${event.checklist.size}"
+    event.hasChecklist -> "${event.title} ☑"
+    else -> event.title
+}
+
 private val DarkText = Color(0xFF202124)
 
 /** How an event is painted, depending on its date request state. */
@@ -157,8 +171,8 @@ fun EventChip(
 ) {
     val look = eventLook(occurrence, colors.colorFor(occurrence.event.ownerId), zone)
     val showTime = roomForTime && !occurrence.event.allDay && !continuesBefore
-    val label = if (showTime) "${LocalDateTime.ofInstant(occurrence.start, zone).format(TimeFormatter)} ${occurrence.event.title}"
-    else occurrence.event.title
+    val label = if (showTime) "${LocalDateTime.ofInstant(occurrence.start, zone).format(TimeFormatter)} ${displayTitle(occurrence.event)}"
+    else displayTitle(occurrence.event)
     val start = if (continuesBefore) 0.dp else 4.dp
     val end = if (continuesAfter) 0.dp else 4.dp
     Text(

@@ -44,6 +44,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.familycalendar.MainViewModel
+import com.familycalendar.data.EventKind
 import com.familycalendar.data.Occurrence
 import com.familycalendar.data.RecurrenceExpander
 import com.familycalendar.ui.sharing.InvitationCard
@@ -62,7 +63,7 @@ private const val SCHEDULE_DAYS = 180L
 fun CalendarScreen(
     viewModel: MainViewModel,
     onOpenOccurrence: (Occurrence) -> Unit,
-    onNewEvent: (start: LocalDateTime, allDay: Boolean) -> Unit,
+    onNewEvent: (start: LocalDateTime, allDay: Boolean, kind: EventKind) -> Unit,
     onOpenSharing: () -> Unit,
 ) {
     val user by viewModel.user.collectAsStateWithLifecycle()
@@ -114,14 +115,26 @@ fun CalendarScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                val start = if (date == LocalDate.now()) {
-                    LocalDateTime.now().truncatedTo(ChronoUnit.HOURS).plusHours(1)
-                } else {
-                    date.atTime(9, 0)
+            var newMenu by rememberSaveable { mutableStateOf(false) }
+            Box {
+                FloatingActionButton(onClick = { newMenu = true }) { Icon(Icons.Default.Add, "New") }
+                DropdownMenu(expanded = newMenu, onDismissRequest = { newMenu = false }) {
+                    DropdownMenuItem(text = { Text("Event") }, onClick = {
+                        newMenu = false
+                        val start = if (date == LocalDate.now()) {
+                            LocalDateTime.now().truncatedTo(ChronoUnit.HOURS).plusHours(1)
+                        } else {
+                            date.atTime(9, 0)
+                        }
+                        onNewEvent(start, false, EventKind.EVENT)
+                    })
+                    // A checklist is due today unless the user picks another day in the form.
+                    DropdownMenuItem(text = { Text("Checklist") }, onClick = {
+                        newMenu = false
+                        onNewEvent(LocalDate.now().atStartOfDay(), true, EventKind.CHECKLIST)
+                    })
                 }
-                onNewEvent(start, false)
-            }) { Icon(Icons.Default.Add, "New event") }
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -185,7 +198,7 @@ fun CalendarScreen(
                         colors = colors,
                         zone = zone,
                         onDayClick = viewModel::openDay,
-                        onSlotClick = { onNewEvent(it, false) },
+                        onSlotClick = { onNewEvent(it, false, EventKind.EVENT) },
                         onOccurrenceClick = onOpenOccurrence,
                     )
                 }

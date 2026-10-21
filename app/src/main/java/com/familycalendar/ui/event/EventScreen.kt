@@ -43,11 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.familycalendar.MainViewModel
 import com.familycalendar.data.CalendarEvent
+import com.familycalendar.data.ChecklistItem
+import com.familycalendar.data.EventKind
 import com.familycalendar.data.Frequency
 import com.familycalendar.data.NO_REMINDER
 import com.familycalendar.data.Recurrence
 import com.familycalendar.data.RequestStatus
 import com.familycalendar.data.Viewer
+import com.familycalendar.data.plusItem
 import com.familycalendar.ui.calendar.ColorDot
 import com.familycalendar.ui.calendar.requestSummary
 import com.familycalendar.ui.calendar.colorFor
@@ -60,6 +63,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
 import java.util.Locale
+import java.util.UUID
 
 private val ReminderOptions = listOf(
     NO_REMINDER to "No reminder",
@@ -92,16 +96,24 @@ fun EventScreen(
     occurrenceStart: Instant?,
     newStart: LocalDateTime?,
     newAllDay: Boolean,
+    newKind: EventKind,
     onBack: () -> Unit,
 ) {
     val user by viewModel.user.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
     val colors by viewModel.calendarColors.collectAsStateWithLifecycle()
     val viewers by viewModel.myViewers.collectAsStateWithLifecycle()
+    val myName by viewModel.myName.collectAsStateWithLifecycle()
     val existing = eventKey?.let { key -> events?.firstOrNull { it.key == key } }
+    // An existing checklist is live (others' ticks show up while editing); a new event's is a draft until Save.
+    val (draftItems, draftActions) = rememberDraftChecklist(user?.uid.orEmpty(), myName)
+    val checklistItems = existing?.checklist ?: draftItems
+    val checklistActions = existing?.let(viewModel::liveChecklistActions) ?: draftActions
     val editable = eventKey == null || existing?.ownerId == user?.uid
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val zone = ZoneId.systemDefault()
+    val isChecklist = (existing?.kind ?: newKind) == EventKind.CHECKLIST
+    val noun = if (isChecklist) "checklist" else "event"
 
     Scaffold(
         topBar = {
@@ -109,9 +121,9 @@ fun EventScreen(
                 title = {
                     Text(
                         when {
-                            eventKey == null -> "New event"
-                            editable -> "Edit event"
-                            else -> "${existing?.ownerName.orEmpty()}'s event"
+                            eventKey == null -> "New $noun"
+                            editable -> "Edit $noun"
+                            else -> "${existing?.ownerName.orEmpty()}'s $noun"
                         }
                     )
                 },
@@ -129,17 +141,28 @@ fun EventScreen(
         Box(Modifier.padding(padding).fillMaxSize()) {
             when {
                 eventKey != null && existing == null ->
-                    Text("This event no longer exists.", Modifier.align(Alignment.Center))
+                    Text("This $noun no longer exists.", Modifier.align(Alignment.Center))
+                editable && isChecklist -> ChecklistEditor(
+                    initial = existing ?: newChecklistTemplate(),
+                    checklistItems = checklistItems,
+                    checklistActions = checklistActions,
+                    colors = colors,
+                    onSave = { viewModel.saveEvent(it, onDone = onBack) },
+                )
                 editable -> EventEditor(
                     initial = existing ?: newEventTemplate(newStart, newAllDay),
                     // Only people who can see this calendar can be asked; they need to read the event.
                     requestCandidates = viewers.filter { it.accepted },
+                    checklistItems = checklistItems,
+                    checklistActions = checklistActions,
+                    colors = colors,
                     onSave = { viewModel.saveEvent(it, onDone = onBack) },
                 )
                 else -> EventDetails(
                     event = existing!!,
                     start = occurrenceStart ?: existing.start,
-                    color = colors.colorFor(existing.ownerId).color,
+                    colors = colors,
+                    checklistActions = checklistActions,
                     myUid = user?.uid,
                     onAnswerAll = { accept -> viewModel.answerRequest(existing, accept) },
                     onAnswerDate = { date, decline -> viewModel.answerDate(existing, date, decline) },
@@ -170,7 +193,7 @@ private fun DeleteDialog(event: CalendarEvent, onDeleteOne: () -> Unit, onDelete
     if (!event.recurrence.repeats) {
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Delete event?") },
+            title = { Text(if (event.isChecklist) "Delete checklist?" else "Delete event?") },
             text = { Text("\"${event.title}\" will be removed for everyone you share your calendar with.") },
             confirmButton = { TextButton(onClick = onDeleteAll) { Text("Delete") } },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -210,8 +233,88 @@ private fun newEventTemplate(start: LocalDateTime?, allDay: Boolean): CalendarEv
     }
 }
 
+/**
+ * Items to save, including text still sitting in the add field: a new event's draft takes it into the
+ * create write, an existing event adds it live.
+ */
+private fun withPendingItem(
+    initial: CalendarEvent,
+    items: List<ChecklistItem>,
+    actions: ChecklistActions,
+    pending: String,
+): List<ChecklistItem> {
+    if (initial.id.isNotBlank()) {
+        actions.onAdd(pending)
+        return items
+    }
+    return items.plusItem(pending, UUID.randomUUID().toString())
+}
+
+/** A standalone checklist is stored as an all-day event on its due date, without reminder, repeat or request. */
+private fun newChecklistTemplate(): CalendarEvent = checklistDueOn(LocalDate.now(), CalendarEvent(kind = EventKind.CHECKLIST))
+
+private fun checklistDueOn(due: LocalDate, event: CalendarEvent): CalendarEvent {
+    val zone = ZoneId.systemDefault()
+    return event.copy(
+        kind = EventKind.CHECKLIST,
+        allDay = true,
+        start = due.atStartOfDay(zone).toInstant(),
+        end = due.plusDays(1).atStartOfDay(zone).toInstant(),
+        reminderMinutes = NO_REMINDER,
+        recurrence = Recurrence(),
+        requestedUid = null,
+        requestedName = "",
+    )
+}
+
 @Composable
-private fun EventEditor(initial: CalendarEvent, requestCandidates: List<Viewer>, onSave: (CalendarEvent) -> Unit) {
+private fun ChecklistEditor(
+    initial: CalendarEvent,
+    checklistItems: List<ChecklistItem>,
+    checklistActions: ChecklistActions,
+    colors: Map<String, Int>,
+    onSave: (CalendarEvent) -> Unit,
+) {
+    val zone = ZoneId.systemDefault()
+    var title by rememberSaveable { mutableStateOf(initial.title) }
+    var due by rememberSaveable { mutableStateOf(LocalDateTime.ofInstant(initial.start, zone)) }
+    var newItem by rememberSaveable { mutableStateOf("") }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        OutlinedTextField(
+            value = title, onValueChange = { title = it },
+            label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        )
+        Text("Due", style = MaterialTheme.typography.labelLarge)
+        DateTimeRow(due, showTime = false) { due = it }
+        ChecklistSection(checklistItems, colors, checklistActions, newItem, { newItem = it })
+        Button(
+            onClick = {
+                // Only a new checklist's create write takes the items; existing items are written live.
+                val items = withPendingItem(initial, checklistItems, checklistActions, newItem)
+                onSave(checklistDueOn(due.toLocalDate(), initial.copy(title = title.trim(), checklist = items)))
+            },
+            enabled = title.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Save") }
+    }
+}
+
+@Composable
+private fun EventEditor(
+    initial: CalendarEvent,
+    requestCandidates: List<Viewer>,
+    checklistItems: List<ChecklistItem>,
+    checklistActions: ChecklistActions,
+    colors: Map<String, Int>,
+    onSave: (CalendarEvent) -> Unit,
+) {
     val zone = ZoneId.systemDefault()
     var title by rememberSaveable { mutableStateOf(initial.title) }
     var location by rememberSaveable { mutableStateOf(initial.location) }
@@ -227,6 +330,8 @@ private fun EventEditor(initial: CalendarEvent, requestCandidates: List<Viewer>,
     var reminderMenu by rememberSaveable { mutableStateOf(false) }
     var requestedUid by rememberSaveable { mutableStateOf(initial.requestedUid) }
     var requestedName by rememberSaveable { mutableStateOf(initial.requestedName) }
+    var showChecklist by rememberSaveable { mutableStateOf(false) }
+    var newItem by rememberSaveable { mutableStateOf("") }
 
     val valid = if (allDay) !end.toLocalDate().isBefore(start.toLocalDate()) else end.isAfter(start)
 
@@ -289,6 +394,12 @@ private fun EventEditor(initial: CalendarEvent, requestCandidates: List<Viewer>,
             label = { Text("Notes") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
         )
 
+        if (showChecklist || checklistItems.isNotEmpty()) {
+            ChecklistSection(checklistItems, colors, checklistActions, newItem, { newItem = it })
+        } else {
+            OutlinedButton(onClick = { showChecklist = true }) { Text("+ Add checklist") }
+        }
+
         Text("Reminder", style = MaterialTheme.typography.labelLarge)
         Box {
             OutlinedButton(onClick = { reminderMenu = true }) { Text(reminderLabel(reminder)) }
@@ -324,6 +435,8 @@ private fun EventEditor(initial: CalendarEvent, requestCandidates: List<Viewer>,
                         recurrence = recurrence,
                         requestedUid = requestedUid,
                         requestedName = requestedName,
+                        // Only a new event's create write takes these; existing items are written live.
+                        checklist = withPendingItem(initial, checklistItems, checklistActions, newItem),
                     )
                 )
             },
@@ -407,7 +520,8 @@ private fun AnswerButtons(
 private fun EventDetails(
     event: CalendarEvent,
     start: Instant,
-    color: androidx.compose.ui.graphics.Color,
+    colors: Map<String, Int>,
+    checklistActions: ChecklistActions,
     myUid: String?,
     onAnswerAll: (accept: Boolean) -> Unit,
     onAnswerDate: (date: LocalDate, decline: Boolean) -> Unit,
@@ -416,7 +530,9 @@ private fun EventDetails(
     val end = start.plus(Duration.between(event.start, event.end))
     val startLocal = LocalDateTime.ofInstant(start, zone)
     val endLocal = LocalDateTime.ofInstant(end, zone)
-    val whenText = if (event.allDay) {
+    val whenText = if (event.isChecklist) {
+        "Due ${startLocal.format(DateFmt)}"
+    } else if (event.allDay) {
         val lastDay = endLocal.toLocalDate().minusDays(1)
         if (lastDay == startLocal.toLocalDate()) "${startLocal.format(DateFmt)} · All day"
         else "${startLocal.format(DateFmt)} – ${lastDay.format(DateFmt)}"
@@ -430,7 +546,7 @@ private fun EventDetails(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ColorDot(color, size = 16.dp)
+            ColorDot(colors.colorFor(event.ownerId).color, size = 16.dp)
             Text(event.title, style = MaterialTheme.typography.headlineSmall)
         }
         Text(whenText)
@@ -447,9 +563,14 @@ private fun EventDetails(
         }
         if (event.location.isNotBlank()) Text("📍 ${event.location}")
         if (event.description.isNotBlank()) Text(event.description)
-        Text("Reminder: ${reminderLabel(event.reminderMinutes)}", style = MaterialTheme.typography.bodySmall)
+        // Viewers can tick and edit the items, though not the event itself.
+        if (event.hasChecklist || event.isChecklist) ChecklistSection(event.checklist, colors, checklistActions)
+        if (!event.isChecklist) {
+            Text("Reminder: ${reminderLabel(event.reminderMinutes)}", style = MaterialTheme.typography.bodySmall)
+        }
         Text(
-            "${event.ownerName}'s calendar · only ${event.ownerName} can change this event.",
+            if (event.isChecklist) "${event.ownerName}'s calendar · everyone can tick and edit the items; only ${event.ownerName} can change the title and date."
+            else "${event.ownerName}'s calendar · only ${event.ownerName} can change this event.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -3,16 +3,19 @@ package com.familycalendar.data
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.LocalDate
+import java.util.UUID
 
 class CalendarRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
@@ -72,9 +75,35 @@ class CalendarRepository(
     // Event writes are not awaited: Firestore applies them to the local cache immediately and
     // syncs when online, whereas the returned Task only completes once the server acknowledges.
     fun saveEvent(event: CalendarEvent): Task<Void> {
-        val doc = if (event.id.isBlank()) events(event.ownerId).document() else events(event.ownerId).document(event.id)
-        return doc.set(event.copy(id = doc.id).toMap())
+        if (event.id.isBlank()) {
+            // Items typed before the first save go into the create write.
+            val doc = events(event.ownerId).document()
+            return doc.set(event.copy(id = doc.id).toMap() + ("checklist" to event.checklist.toFirestore()))
+        }
+        // Merge without "checklist", so ticks others made meanwhile survive the owner's save.
+        return events(event.ownerId).document(event.id).set(event.toMap(), SetOptions.merge())
     }
+
+    // Checklist items are written one field path at a time, so concurrent edits of different items never collide.
+
+    fun newItemId(): String = UUID.randomUUID().toString()
+
+    fun addItem(event: CalendarEvent, item: ChecklistItem): Task<Void> =
+        events(event.ownerId).document(event.id).update(FieldPath.of("checklist", item.id), item.toFirestore())
+
+    fun renameItem(event: CalendarEvent, itemId: String, text: String): Task<Void> =
+        events(event.ownerId).document(event.id).update(FieldPath.of("checklist", itemId, "text"), text)
+
+    /** Ticks the item for [byUid], or unticks it when [byUid] is `null`. */
+    fun setChecked(event: CalendarEvent, itemId: String, byUid: String?, byName: String): Task<Void> =
+        events(event.ownerId).document(event.id).update(
+            FieldPath.of("checklist", itemId, "checkedBy"), byUid,
+            FieldPath.of("checklist", itemId, "checkedByName"), if (byUid == null) "" else byName,
+            FieldPath.of("checklist", itemId, "checkedAt"), if (byUid == null) null else FieldValue.serverTimestamp(),
+        )
+
+    fun removeItem(event: CalendarEvent, itemId: String): Task<Void> =
+        events(event.ownerId).document(event.id).update(FieldPath.of("checklist", itemId), FieldValue.delete())
 
     fun deleteEvent(event: CalendarEvent): Task<Void> =
         events(event.ownerId).document(event.id).delete()

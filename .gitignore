@@ -8,3 +8,6 @@ captures/
 .kotlin/
 # Firebase client config — download your own from the Firebase console
 app/google-services.json
+
+# Brainstorming companion mockups
+.superpowers/

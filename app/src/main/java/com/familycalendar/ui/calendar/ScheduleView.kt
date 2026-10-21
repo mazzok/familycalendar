@@ -134,7 +134,7 @@ private fun ScheduleRow(
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text(
-            occ.event.title,
+            displayTitle(occ.event),
             color = look.text,
             textDecoration = look.decoration,
             fontWeight = FontWeight.SemiBold,

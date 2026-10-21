@@ -6,7 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.familycalendar.data.AuthRepository
 import com.familycalendar.data.CalendarEvent
 import com.familycalendar.data.CalendarRepository
+import com.familycalendar.data.ChecklistItem
+import com.familycalendar.data.itemText
+import com.familycalendar.ui.event.ChecklistActions
 import com.familycalendar.notifications.ChangeNotifier
+import com.familycalendar.notifications.ChecklistNotifier
 import com.familycalendar.notifications.RequestNotifier
 import com.familycalendar.data.SharedCalendar
 import com.familycalendar.data.Viewer
@@ -61,15 +65,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .flatMapLatest { u -> if (u == null) flowOf(emptyList()) else repository.observeViewers(u.uid) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** The calendars loaded and their events, from one emission, so they always match. */
+    private data class Visible(val owners: List<String>, val events: List<CalendarEvent>)
+
     /** Everything stored, including tombstones of cancelled requests. `null` while loading. */
-    private val allEvents: StateFlow<List<CalendarEvent>?> = combine(user, sharedWithMe) { u, shared -> u to shared }
+    private val visible: StateFlow<Visible?> = combine(user, sharedWithMe) { u, shared -> u to shared }
         .flatMapLatest { (u, shared) ->
-            if (u == null) return@flatMapLatest flowOf(emptyList<CalendarEvent>())
-            val owners = listOf(u.uid) + shared.map { it.ownerId }.filter { it != u.uid }
-            combine(owners.distinct().map { repository.observeEvents(it) }) { perCalendar ->
-                perCalendar.flatMap { it }
+            if (u == null) return@flatMapLatest flowOf(Visible(emptyList(), emptyList()))
+            val owners = (listOf(u.uid) + shared.map { it.ownerId }.filter { it != u.uid }).distinct()
+            combine(owners.map { repository.observeEvents(it) }) { perCalendar ->
+                Visible(owners, perCalendar.flatMap { it })
             }
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val allEvents: StateFlow<List<CalendarEvent>?> = visible
+        .map { it?.events }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** All visible event series across own and shared calendars. `null` while loading. */
@@ -115,10 +126,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { ReminderScheduler.sync(getApplication(), it, user.value?.uid) }
         }
         viewModelScope.launch {
-            combine(user, allEvents.filterNotNull()) { u, list -> u to list }.collect { (u, list) ->
+            combine(user, visible.filterNotNull()) { u, v -> u to v }.collect { (u, v) ->
                 if (u == null) return@collect
+                val list = v.events
                 ChangeNotifier.notifyChanges(getApplication(), u.uid, list)
                 ChangeNotifier.notifyAnswers(getApplication(), u.uid, list)
+                // A calendar counts as seen only together with its events, so a fresh share isn't announced list by list.
+                ChecklistNotifier.notify(getApplication(), u.uid, v.owners, list)
                 // Tombstones only need to live until the requested person's phone had a chance to see them.
                 val expired = Instant.now().minus(Duration.ofDays(30))
                 list.filter { it.ownerId == u.uid && it.cancelledAt?.isBefore(expired) == true }
@@ -148,6 +162,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         repository.saveEvent(toSave)
             .addOnFailureListener { _message.value = "Could not save: ${it.localizedMessage}" }
         onDone()
+    }
+
+    // Checklist items are written immediately by anyone who can see the calendar, separate from the form's Save.
+
+    fun addItem(event: CalendarEvent, text: String) {
+        val clean = itemText(text) ?: return
+        val item = ChecklistItem(id = repository.newItemId(), text = clean, order = event.nextItemOrder())
+        repository.addItem(event, item).addOnFailureListener(::checklistFailed)
+    }
+
+    /** A blank text keeps the old one. */
+    fun renameItem(event: CalendarEvent, item: ChecklistItem, text: String) {
+        val clean = itemText(text) ?: return
+        repository.renameItem(event, item.id, clean).addOnFailureListener(::checklistFailed)
+    }
+
+    fun toggleItem(event: CalendarEvent, item: ChecklistItem) {
+        val u = user.value ?: return
+        val by = if (item.checked) null else u.uid
+        repository.setChecked(event, item.id, by, u.nameOrEmail()).addOnFailureListener(::checklistFailed)
+    }
+
+    fun removeItem(event: CalendarEvent, item: ChecklistItem) {
+        repository.removeItem(event, item.id).addOnFailureListener(::checklistFailed)
+    }
+
+    fun liveChecklistActions(event: CalendarEvent) = ChecklistActions(
+        onToggle = { toggleItem(event, it) },
+        onAdd = { addItem(event, it) },
+        onRename = { item, text -> renameItem(event, item, text) },
+        onRemove = { removeItem(event, it) },
+    )
+
+    private fun checklistFailed(e: Exception) {
+        _message.value = "Could not update the checklist: ${e.localizedMessage}"
     }
 
     /** Date requests addressed to the current user that still wait for an answer. */

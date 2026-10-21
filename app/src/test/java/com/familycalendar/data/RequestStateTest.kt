@@ -15,6 +15,14 @@ class RequestStateTest {
     )
 
     @Test
+    fun `a different checklist is neither a change notice nor a reopened request`() {
+        val ticked = accepted.copy(checklist = listOf(ChecklistItem("a", "Brot", checkedBy = "ben")))
+        val saved = ticked.withRequestStateFrom(accepted).withChangeNoticeFrom(accepted)
+        assertEquals(RequestStatus.ACCEPTED, saved.requestStatus)
+        assertEquals(accepted.changeSeq, saved.changeSeq)
+    }
+
+    @Test
     fun `new request starts pending`() {
         val fresh = accepted.copy(id = "", requestStatus = null).withRequestStateFrom(previous = null)
         assertEquals(RequestStatus.PENDING, fresh.requestStatus)

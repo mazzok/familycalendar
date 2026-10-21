@@ -34,6 +34,7 @@ class ReminderSyncWorker(context: Context, params: WorkerParameters) : Coroutine
             val all = owners.distinct().flatMap { repository.fetchEvents(it) }
             ChangeNotifier.notifyChanges(applicationContext, user.uid, all)
             ChangeNotifier.notifyAnswers(applicationContext, user.uid, all)
+            ChecklistNotifier.notify(applicationContext, user.uid, owners.distinct(), all)
             val events = all.filterNot { it.cancelled }
             ReminderScheduler.sync(applicationContext, events, user.uid)
             val now = java.time.Instant.now()

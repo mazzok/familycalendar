@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.familycalendar.MainViewModel
+import com.familycalendar.data.EventKind
 import com.familycalendar.ui.calendar.CalendarScreen
 import com.familycalendar.ui.event.EventScreen
 import com.familycalendar.ui.sharing.SharingScreen
@@ -22,15 +23,15 @@ import java.time.LocalDateTime
 private object Routes {
     const val CALENDAR = "calendar"
     const val SHARING = "sharing"
-    const val EVENT = "event?key={key}&occ={occ}&start={start}&allDay={allDay}"
+    const val EVENT = "event?key={key}&occ={occ}&start={start}&allDay={allDay}&kind={kind}"
 
     /** An existing event; [occurrenceStart] says which occurrence of a repeating series was tapped. */
     fun event(key: String, occurrenceStart: Instant) =
         "event?key=${Uri.encode(key)}&occ=${occurrenceStart.toEpochMilli()}"
 
-    /** A new event starting at [start] (local time, as tapped in the grid). */
-    fun newEvent(start: LocalDateTime, allDay: Boolean) =
-        "event?start=${Uri.encode(start.toString())}&allDay=$allDay"
+    /** A new event (or checklist) starting at [start] (local time, as tapped in the grid). */
+    fun newEvent(start: LocalDateTime, allDay: Boolean, kind: EventKind) =
+        "event?start=${Uri.encode(start.toString())}&allDay=$allDay&kind=${kind.name}"
 }
 
 @Composable
@@ -53,7 +54,7 @@ fun AppNavigation(viewModel: MainViewModel) {
             CalendarScreen(
                 viewModel = viewModel,
                 onOpenOccurrence = { nav.navigate(Routes.event(it.event.key, it.start)) },
-                onNewEvent = { start, allDay -> nav.navigate(Routes.newEvent(start, allDay)) },
+                onNewEvent = { start, allDay, kind -> nav.navigate(Routes.newEvent(start, allDay, kind)) },
                 onOpenSharing = { nav.navigate(Routes.SHARING) },
             )
         }
@@ -64,6 +65,7 @@ fun AppNavigation(viewModel: MainViewModel) {
                 navArgument("occ") { type = NavType.LongType; defaultValue = -1L },
                 navArgument("start") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("allDay") { type = NavType.BoolType; defaultValue = false },
+                navArgument("kind") { type = NavType.StringType; defaultValue = EventKind.EVENT.name },
             ),
         ) { entry ->
             val args = entry.arguments
@@ -73,6 +75,7 @@ fun AppNavigation(viewModel: MainViewModel) {
                 occurrenceStart = args?.getLong("occ")?.takeIf { it >= 0 }?.let(Instant::ofEpochMilli),
                 newStart = args?.getString("start")?.let { runCatching { LocalDateTime.parse(it) }.getOrNull() },
                 newAllDay = args?.getBoolean("allDay") ?: false,
+                newKind = args?.getString("kind")?.let { k -> EventKind.entries.firstOrNull { it.name == k } } ?: EventKind.EVENT,
                 onBack = { nav.popBackStack() },
             )
         }

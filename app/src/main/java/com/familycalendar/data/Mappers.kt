@@ -35,7 +35,35 @@ fun CalendarEvent.toMap(): Map<String, Any?> = mapOf(
     "changeSeq" to changeSeq,
     "changedFields" to changedFields,
     "cancelledAt" to cancelledAt?.toTimestamp(),
+    "kind" to kind.name.lowercase(),
+    // No "checklist": items are written one by one, so a form save can't wipe someone else's ticks.
 )
+
+fun ChecklistItem.toFirestore(): Map<String, Any?> = mapOf(
+    "text" to text,
+    "order" to order,
+    "checkedBy" to checkedBy,
+    "checkedByName" to checkedByName,
+    "checkedAt" to checkedAt?.toTimestamp(),
+)
+
+/** The `checklist` map field: item id -> item. */
+fun List<ChecklistItem>.toFirestore(): Map<String, Map<String, Any?>> = associate { it.id to it.toFirestore() }
+
+/** Reads the `checklist` map field; entries that aren't maps are skipped. */
+fun parseChecklist(raw: Any?): List<ChecklistItem> =
+    (raw as? Map<*, *>).orEmpty().mapNotNull { (id, value) ->
+        val item = value as? Map<*, *> ?: return@mapNotNull null
+        ChecklistItem(
+            id = id as? String ?: return@mapNotNull null,
+            // No text: an offline tick landed after the item was removed and recreated only the tick fields.
+            text = item["text"] as? String ?: return@mapNotNull null,
+            order = (item["order"] as? Number)?.toLong() ?: 0,
+            checkedBy = (item["checkedBy"] as? String)?.takeIf { it.isNotBlank() },
+            checkedByName = item["checkedByName"] as? String ?: "",
+            checkedAt = (item["checkedAt"] as? Timestamp)?.toInstant(),
+        )
+    }.sortedWith(compareBy({ it.order }, { it.id }))
 
 fun DocumentSnapshot.toEvent(): CalendarEvent? {
     val start = getTimestamp("start") ?: return null
@@ -75,6 +103,9 @@ fun DocumentSnapshot.toEvent(): CalendarEvent? {
         changeSeq = getLong("changeSeq")?.toInt() ?: 0,
         changedFields = (get("changedFields") as? List<*>).orEmpty().filterIsInstance<String>(),
         cancelledAt = getTimestamp("cancelledAt")?.toInstant(),
+        kind = if (getString("kind").equals("checklist", ignoreCase = true)) EventKind.CHECKLIST else EventKind.EVENT,
+        // A tick made offline has no server time yet; the estimate keeps it ordered as the newest.
+        checklist = parseChecklist(get("checklist", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)),
     )
 }
 
