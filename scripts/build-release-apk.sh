@@ -20,7 +20,8 @@ apksigner="$build_tools/apksigner"
 [[ -f "$apksigner" ]] || apksigner="$apksigner.bat" # Windows SDK
 
 # The APK must carry the version semantic-release calculated.
-badging="$("$build_tools/aapt2" dump badging "$apk" | head -n 1)"
+badging="$("$build_tools/aapt2" dump badging "$apk")"
+badging="${badging%%$'\n'*}" # first line; piping into head would SIGPIPE aapt2 under pipefail
 echo "$badging"
 if [[ "$badging" != *"versionName='$version'"* ]]; then
   echo "error: APK versionName does not match $version" >&2
