@@ -5,6 +5,24 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+// CI passes the semantic-release version: ./gradlew assembleRelease -PreleaseVersion=1.4.2
+// versionCode = MAJOR * 1_000_000 + MINOR * 1_000 + PATCH, so it grows with every release and stays
+// below Android's limit of 2_100_000_000. See docs/android-release.md.
+val releaseVersion: String? = providers.gradleProperty("releaseVersion").orNull
+
+fun versionCodeOf(version: String): Int {
+    val match = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(version)
+        ?: throw GradleException("releaseVersion must be MAJOR.MINOR.PATCH, got '$version'")
+    val (major, minor, patch) = match.destructured.toList().map { it.toInt() }
+    if (major > 2099 || minor > 999 || patch > 999) {
+        throw GradleException("releaseVersion $version does not fit the versionCode scheme")
+    }
+    return major * 1_000_000 + minor * 1_000 + patch
+}
+
+// The release keystore never lives in the repo; CI writes it from GitHub secrets.
+val keystorePath: String? = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+
 android {
     namespace = "com.familycalendar"
     compileSdk = 35
@@ -13,14 +31,26 @@ android {
         applicationId = "com.familycalendar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = releaseVersion?.let(::versionCodeOf) ?: 1
+        versionName = releaseVersion ?: "1.0"
+    }
+
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").get()
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

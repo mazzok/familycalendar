@@ -55,3 +55,9 @@ when the app is open, or at the next background sync (≤ 30 min, at Android's d
 ```
 ./gradlew testDebugUnitTest
 ```
+
+## Releases
+
+Pushes to `main` with `feat:`/`fix:` commits publish a signed APK as a GitHub release:
+[download the latest APK](https://github.com/mazzok/familycalendar/releases/latest/download/app-release.apk).
+Setup, secrets and versioning: [docs/android-release.md](docs/android-release.md).
