@@ -46,4 +46,7 @@ val CalendarPalette = listOf(
     CalendarColor("Graphite", Color(0xFF616161)),
 )
 
+/** Birthdays stand out from every calendar color. */
+val BirthdayColor = CalendarColor("Birthday", Color(0xFFEC407A))
+
 fun paletteColor(index: Int?): CalendarColor = CalendarPalette[(index ?: 0).mod(CalendarPalette.size)]

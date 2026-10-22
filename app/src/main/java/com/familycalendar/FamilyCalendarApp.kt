@@ -1,6 +1,7 @@
 package com.familycalendar
 
 import android.app.Application
+import com.familycalendar.notifications.BirthdayScheduler
 import com.familycalendar.notifications.ChangeNotifier
 import com.familycalendar.notifications.ChecklistNotifier
 import com.familycalendar.notifications.InvitationNotifier
@@ -16,6 +17,7 @@ class FamilyCalendarApp : Application() {
         RequestNotifier.createChannel(this)
         ChangeNotifier.createChannel(this)
         ChecklistNotifier.createChannel(this)
+        BirthdayScheduler.createChannel(this)
         ReminderSyncWorker.schedulePeriodic(this)
     }
 }

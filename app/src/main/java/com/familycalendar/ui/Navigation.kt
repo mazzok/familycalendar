@@ -14,6 +14,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.familycalendar.MainViewModel
 import com.familycalendar.data.EventKind
+import com.familycalendar.ui.birthday.BirthdayEditScreen
+import com.familycalendar.ui.birthday.BirthdayListScreen
 import com.familycalendar.ui.calendar.CalendarScreen
 import com.familycalendar.ui.event.EventScreen
 import com.familycalendar.ui.sharing.SharingScreen
@@ -24,6 +26,12 @@ private object Routes {
     const val CALENDAR = "calendar"
     const val SHARING = "sharing"
     const val EVENT = "event?key={key}&occ={occ}&start={start}&allDay={allDay}&kind={kind}"
+    const val BIRTHDAYS = "birthdays"
+    const val BIRTHDAY = "birthday?owner={owner}&id={id}"
+
+    /** An existing birthday of [ownerId]'s calendar, or a new one of my own when [id] is `null`. */
+    fun birthday(ownerId: String?, id: String?) =
+        "birthday?owner=${Uri.encode(ownerId.orEmpty())}&id=${Uri.encode(id.orEmpty())}"
 
     /** An existing event; [occurrenceStart] says which occurrence of a repeating series was tapped. */
     fun event(key: String, occurrenceStart: Instant) =
@@ -53,9 +61,14 @@ fun AppNavigation(viewModel: MainViewModel) {
         composable(Routes.CALENDAR) {
             CalendarScreen(
                 viewModel = viewModel,
-                onOpenOccurrence = { nav.navigate(Routes.event(it.event.key, it.start)) },
+                onOpenOccurrence = {
+                    if (it.event.isBirthday) nav.navigate(Routes.birthday(it.event.ownerId, it.event.id))
+                    else nav.navigate(Routes.event(it.event.key, it.start))
+                },
                 onNewEvent = { start, allDay, kind -> nav.navigate(Routes.newEvent(start, allDay, kind)) },
                 onOpenSharing = { nav.navigate(Routes.SHARING) },
+                onOpenBirthdays = { nav.navigate(Routes.BIRTHDAYS) },
+                onNewBirthday = { nav.navigate(Routes.birthday(null, null)) },
             )
         }
         composable(
@@ -81,6 +94,28 @@ fun AppNavigation(viewModel: MainViewModel) {
         }
         composable(Routes.SHARING) {
             SharingScreen(viewModel = viewModel, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.BIRTHDAYS) {
+            BirthdayListScreen(
+                viewModel = viewModel,
+                onOpen = { nav.navigate(Routes.birthday(it.ownerId, it.id)) },
+                onNew = { nav.navigate(Routes.birthday(null, null)) },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(
+            Routes.BIRTHDAY,
+            arguments = listOf(
+                navArgument("owner") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) { entry ->
+            BirthdayEditScreen(
+                viewModel = viewModel,
+                ownerId = entry.arguments?.getString("owner")?.takeIf { it.isNotBlank() },
+                birthdayId = entry.arguments?.getString("id")?.takeIf { it.isNotBlank() },
+                onBack = { nav.popBackStack() },
+            )
         }
     }
 }

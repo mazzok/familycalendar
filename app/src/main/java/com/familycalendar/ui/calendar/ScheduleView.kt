@@ -110,7 +110,7 @@ private fun ScheduleRow(
     zone: ZoneId,
     onClick: () -> Unit,
 ) {
-    val look = eventLook(occ, colors.colorFor(occ.event.ownerId), zone)
+    val look = eventLook(occ, colors.colorFor(occ.event), zone)
     val start = LocalDateTime.ofInstant(occ.start, zone)
     val end = LocalDateTime.ofInstant(occ.end, zone)
     val time = when {

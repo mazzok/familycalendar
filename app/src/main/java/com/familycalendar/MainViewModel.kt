@@ -1,9 +1,13 @@
 package com.familycalendar
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.familycalendar.data.AuthRepository
+import com.familycalendar.data.Birthday
+import com.familycalendar.data.SELF_BIRTHDAY_ID
+import com.familycalendar.notifications.BirthdayScheduler
 import com.familycalendar.data.CalendarEvent
 import com.familycalendar.data.CalendarRepository
 import com.familycalendar.data.ChecklistItem
@@ -88,6 +92,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .map { list -> list?.filterNot { it.cancelled } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /**
+     * Every birthday the user can see: their own (account + entered) and, per accepted shared calendar, that
+     * owner's account birthday and the ones shared with them. Kept apart from [events], so birthdays never
+     * reach reminders or change notifications.
+     */
+    val birthdays: StateFlow<List<Birthday>> = combine(user, sharedWithMe) { u, shared -> u to shared }
+        .flatMapLatest { (u, shared) ->
+            if (u == null) return@flatMapLatest flowOf(emptyList())
+            val others = shared.map { it.ownerId }.filter { it != u.uid }.distinct()
+            combine(listOf(repository.observeOwnBirthdays(u.uid)) + others.map { repository.observeBirthdaysSharedWith(it, u.uid) }) {
+                it.flatMap { list -> list }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The user's own account birthday, if set. */
+    val myBirthday: StateFlow<Birthday?> = combine(user, birthdays) { u, list ->
+        list.firstOrNull { it.isAccount && it.ownerId == u?.uid }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val _birthdayNotifications = MutableStateFlow(notificationPrefs.birthdaysEnabled)
+    val birthdayNotifications: StateFlow<Boolean> = _birthdayNotifications.asStateFlow()
+
     private val _colorOverrides = MutableStateFlow(calendarPrefs.colorOverrides())
 
     /**
@@ -126,6 +153,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { ReminderScheduler.sync(getApplication(), it, user.value?.uid) }
         }
         viewModelScope.launch {
+            combine(birthdays, mutedOwners, birthdayNotifications) { list, _, _ -> list }
+                .collect { BirthdayScheduler.sync(getApplication(), it, user.value?.uid) }
+        }
+        viewModelScope.launch {
             combine(user, visible.filterNotNull()) { u, v -> u to v }.collect { (u, v) ->
                 if (u == null) return@collect
                 val list = v.events
@@ -146,7 +177,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signIn(email: String, password: String) = launchBusy { auth.signIn(email, password) }
 
-    fun register(name: String, email: String, password: String) = launchBusy { auth.register(name, email, password) }
+    fun register(name: String, email: String, password: String, birthday: Birthday? = null) =
+        launchBusy { auth.register(name, email, password, birthday) }
 
     fun signOut() {
         auth.signOut()
@@ -319,7 +351,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun revoke(viewer: Viewer) {
         val u = user.value ?: return
-        launchBusy { repository.removeViewer(u.uid, viewer.uid) }
+        launchBusy {
+            repository.removeViewer(u.uid, viewer.uid)
+            // The revoke already worked and the rules block their reads; a later invite clears leftovers anyway.
+            runCatching { repository.unshareBirthdays(u.uid, viewer.uid) }
+                .onFailure { Log.w("MainViewModel", "Unsharing birthdays failed", it) }
+        }
+    }
+
+    /** Saves an entered birthday into the user's own calendar. */
+    fun saveBirthday(birthday: Birthday, onDone: () -> Unit) {
+        val u = user.value ?: return
+        repository.saveBirthday(birthday.copy(ownerId = u.uid, ownerName = u.nameOrEmail()))
+            .addOnFailureListener { _message.value = "Could not save: ${it.localizedMessage}" }
+        onDone()
+    }
+
+    fun deleteBirthday(birthday: Birthday, onDone: () -> Unit) {
+        onDone()
+        repository.deleteBirthday(birthday)
+            .addOnFailureListener { _message.value = "Could not delete: ${it.localizedMessage}" }
+    }
+
+    /** Sets the account birthday; its name follows the current display name. */
+    fun saveMyBirthday(day: Int, month: Int, year: Int?) {
+        val u = user.value ?: return
+        val name = u.nameOrEmail()
+        saveBirthday(Birthday(id = SELF_BIRTHDAY_ID, name = name, month = month, day = day, year = year)) {}
+    }
+
+    fun deleteMyBirthday() {
+        myBirthday.value?.let { deleteBirthday(it) {} }
+    }
+
+    fun setBirthdayShared(birthday: Birthday, viewerUid: String, shared: Boolean) {
+        repository.setBirthdayShared(birthday.ownerId, birthday.id, viewerUid, shared)
+            .addOnFailureListener { _message.value = "Could not change sharing: ${it.localizedMessage}" }
+    }
+
+    fun setBirthdayNotifications(enabled: Boolean) {
+        notificationPrefs.birthdaysEnabled = enabled
+        _birthdayNotifications.value = enabled
     }
 
     fun leave(calendar: SharedCalendar) {

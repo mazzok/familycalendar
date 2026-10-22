@@ -215,7 +215,7 @@ private fun DayColumn(
         val columnWidth = maxWidth
         segments.forEachIndexed { i, (occ, startMin, endMin) ->
             val slot = slots[i]
-            val look = eventLook(occ, colors.colorFor(occ.event.ownerId), zone)
+            val look = eventLook(occ, colors.colorFor(occ.event), zone)
             val top = HourHeight * (startMin / 60f)
             val height = HourHeight * ((endMin - startMin) / 60f)
             val width = columnWidth / slot.columns

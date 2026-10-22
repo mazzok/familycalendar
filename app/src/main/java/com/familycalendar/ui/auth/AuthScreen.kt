@@ -29,6 +29,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.familycalendar.MainViewModel
+import com.familycalendar.data.Birthday
+import com.familycalendar.ui.birthday.BirthDateFields
+import com.familycalendar.ui.birthday.parseBirthDate
+import java.time.LocalDate
 
 @Composable
 fun AuthScreen(viewModel: MainViewModel) {
@@ -38,8 +42,14 @@ fun AuthScreen(viewModel: MainViewModel) {
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var birthDay by rememberSaveable { mutableStateOf("") }
+    var birthMonth by rememberSaveable { mutableStateOf("") }
+    var birthYear by rememberSaveable { mutableStateOf("") }
 
-    val canSubmit = !busy && email.isNotBlank() && password.length >= 6 && (!registering || name.isNotBlank())
+    val noBirthday = birthDay.isBlank() && birthMonth.isBlank() && birthYear.isBlank()
+    val birthDate = parseBirthDate(birthDay, birthMonth, birthYear, LocalDate.now())
+    val canSubmit = !busy && email.isNotBlank() && password.length >= 6 &&
+        (!registering || (name.isNotBlank() && (noBirthday || birthDate != null)))
 
     Scaffold { padding ->
         Column(
@@ -63,6 +73,12 @@ fun AuthScreen(viewModel: MainViewModel) {
                     label = { Text("Your name") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text(
+                    "Birthday (optional) — people you share your calendar with see it",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                BirthDateFields(birthDay, birthMonth, birthYear, onChange = { d, m, y -> birthDay = d; birthMonth = m; birthYear = y })
             }
             OutlinedTextField(
                 value = email, onValueChange = { email = it },
@@ -82,7 +98,12 @@ fun AuthScreen(viewModel: MainViewModel) {
             Button(
                 onClick = {
                     viewModel.clearMessage()
-                    if (registering) viewModel.register(name, email, password) else viewModel.signIn(email, password)
+                    if (registering) {
+                        val birthday = birthDate?.let { Birthday(month = it.month, day = it.day, year = it.year) }
+                        viewModel.register(name, email, password, birthday)
+                    } else {
+                        viewModel.signIn(email, password)
+                    }
                 },
                 enabled = canSubmit,
                 modifier = Modifier.fillMaxWidth(),

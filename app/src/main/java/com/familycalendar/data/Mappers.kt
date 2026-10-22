@@ -109,6 +109,35 @@ fun DocumentSnapshot.toEvent(): CalendarEvent? {
     )
 }
 
+fun Birthday.toMap(): Map<String, Any?> = mapOf(
+    "name" to name,
+    "ownerName" to ownerName,
+    "month" to month,
+    "day" to day,
+    "year" to year,
+    "sharedWith" to sharedWith.sorted(),
+)
+
+/** Reads a birthday document's fields; `null` if name, month or day is missing. */
+fun parseBirthday(id: String, ownerId: String, data: Map<String, Any?>): Birthday? {
+    return Birthday(
+        id = id,
+        ownerId = ownerId,
+        ownerName = data["ownerName"] as? String ?: "",
+        name = data["name"] as? String ?: return null,
+        month = (data["month"] as? Number)?.toInt() ?: return null,
+        day = (data["day"] as? Number)?.toInt() ?: return null,
+        year = (data["year"] as? Number)?.toInt(),
+        sharedWith = (data["sharedWith"] as? List<*>).orEmpty().filterIsInstance<String>().toSet(),
+    )
+}
+
+/** The owner is the calendar the `birthdays` subcollection belongs to. */
+fun DocumentSnapshot.toBirthday(): Birthday? {
+    val ownerId = reference.parent.parent?.id ?: return null
+    return parseBirthday(id, ownerId, data ?: return null)
+}
+
 const val STATUS_PENDING = "pending"
 const val STATUS_ACCEPTED = "accepted"
 

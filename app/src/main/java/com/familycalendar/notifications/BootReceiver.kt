@@ -11,6 +11,7 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 // Nothing is armed any more after a reboot.
                 NotificationPrefs(context).setScheduledKeys(emptySet())
+                NotificationPrefs(context).setScheduledBirthdayKeys(emptySet())
                 ReminderSyncWorker.syncNow(context)
             }
         }

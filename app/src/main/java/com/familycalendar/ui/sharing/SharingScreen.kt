@@ -13,7 +13,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -64,7 +66,43 @@ fun SharingScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
     /** ownerId whose color is being picked, or null. */
     var pickingColorFor by rememberSaveable { mutableStateOf<String?>(null) }
+    /** Viewer uid whose shared birthdays are being picked, or null. */
+    var birthdaysFor by rememberSaveable { mutableStateOf<String?>(null) }
+    val birthdays by viewModel.birthdays.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+
+    birthdaysFor?.let { uid ->
+        val viewer = viewers.firstOrNull { it.uid == uid }
+        if (viewer == null) {
+            birthdaysFor = null
+        } else {
+            val mine = birthdays.filter { it.ownerId == user?.uid && !it.isAccount }.sortedBy { it.name }
+            AlertDialog(
+                onDismissRequest = { birthdaysFor = null },
+                title = { Text("Birthdays ${viewer.name.ifBlank { viewer.email }} sees") },
+                text = {
+                    Column {
+                        Text(
+                            "Your own birthday is always visible.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (mine.isEmpty()) Text("You haven't added any birthdays yet.", Modifier.padding(top = 8.dp))
+                        mine.forEach { b ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = uid in b.sharedWith,
+                                    onCheckedChange = { viewModel.setBirthdayShared(b, uid, it) },
+                                )
+                                Text(b.name)
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { birthdaysFor = null }) { Text("Done") } },
+            )
+        }
+    }
 
     pickingColorFor?.let { ownerId ->
         ColorPickerDialog(
@@ -151,8 +189,13 @@ fun SharingScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         Text(if (viewer.accepted) viewer.email else "Invitation pending · ${viewer.email}")
                     },
                     trailingContent = {
-                        IconButton(onClick = { viewModel.revoke(viewer) }) {
-                            Icon(Icons.Default.Close, if (viewer.accepted) "Stop sharing" else "Withdraw invitation")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (viewer.accepted) {
+                                TextButton(onClick = { birthdaysFor = viewer.uid }) { Text("Birthdays") }
+                            }
+                            IconButton(onClick = { viewModel.revoke(viewer) }) {
+                                Icon(Icons.Default.Close, if (viewer.accepted) "Stop sharing" else "Withdraw invitation")
+                            }
                         }
                     },
                 )

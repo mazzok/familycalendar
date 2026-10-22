@@ -19,8 +19,20 @@ class NotificationPrefs(context: Context) {
         prefs.edit().putStringSet(KEY_SCHEDULED, keys).apply()
     }
 
+    var birthdaysEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BIRTHDAYS_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_BIRTHDAYS_ENABLED, value).apply()
+
+    fun scheduledBirthdayKeys(): Set<String> = prefs.getStringSet(KEY_SCHEDULED_BIRTHDAYS, emptySet()).orEmpty().toSet()
+
+    fun setScheduledBirthdayKeys(keys: Set<String>) {
+        prefs.edit().putStringSet(KEY_SCHEDULED_BIRTHDAYS, keys).apply()
+    }
+
     private companion object {
         const val KEY_MUTED = "muted_owners"
         const val KEY_SCHEDULED = "scheduled_keys"
+        const val KEY_BIRTHDAYS_ENABLED = "birthdays_enabled"
+        const val KEY_SCHEDULED_BIRTHDAYS = "scheduled_birthday_keys"
     }
 }

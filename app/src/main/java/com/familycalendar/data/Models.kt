@@ -35,8 +35,11 @@ data class Recurrence(
 
 enum class RequestStatus { PENDING, ACCEPTED, DECLINED }
 
-/** A normal event, or a standalone checklist ("check-it"): title, due date and items only. */
-enum class EventKind { EVENT, CHECKLIST }
+/**
+ * A normal event, or a standalone checklist ("check-it"): title, due date and items only.
+ * BIRTHDAY is never stored: birthdays are shown as synthetic events (see `birthdayOccurrences`).
+ */
+enum class EventKind { EVENT, CHECKLIST, BIRTHDAY }
 
 /** One entry of a shared checklist. Anyone who can see the calendar may tick or edit it. */
 data class ChecklistItem(
@@ -101,6 +104,7 @@ data class CalendarEvent(
 ) {
     val cancelled: Boolean get() = cancelledAt != null
     val isChecklist: Boolean get() = kind == EventKind.CHECKLIST
+    val isBirthday: Boolean get() = kind == EventKind.BIRTHDAY
     val hasChecklist: Boolean get() = checklist.isNotEmpty()
     val checklistDone: Int get() = checklist.count { it.checked }
     /** Every item ticked; an empty list is never complete. */

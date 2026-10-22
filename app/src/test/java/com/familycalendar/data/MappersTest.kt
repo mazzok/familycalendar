@@ -2,6 +2,7 @@ package com.familycalendar.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.Instant
 
@@ -35,5 +36,23 @@ class MappersTest {
     fun `malformed checklist entries are skipped`() {
         assertEquals(emptyList<ChecklistItem>(), parseChecklist(null))
         assertEquals(listOf("ok"), parseChecklist(mapOf("x" to "junk", "ok" to mapOf("text" to "Eier"))).map { it.id })
+    }
+
+    @Test
+    fun `birthday round-trips through the Firestore shape`() {
+        val b = Birthday(
+            id = "b1", ownerId = "anna", ownerName = "Anna", name = "Oma",
+            month = 2, day = 29, year = null, sharedWith = setOf("cara", "ben"),
+        )
+        // Firestore hands numbers back as Long.
+        val stored = b.toMap().mapValues { (_, v) -> if (v is Int) v.toLong() else v }
+        assertEquals(b, parseBirthday("b1", "anna", stored))
+        assertEquals(listOf("ben", "cara"), b.toMap()["sharedWith"])
+        assertEquals(1986, parseBirthday("b1", "anna", stored + ("year" to 1986L))?.year)
+    }
+
+    @Test
+    fun `birthday without day is skipped`() {
+        assertNull(parseBirthday("b1", "anna", mapOf("name" to "Oma", "month" to 2L)))
     }
 }

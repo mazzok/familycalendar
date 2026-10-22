@@ -23,6 +23,7 @@ class ReminderSyncWorker(context: Context, params: WorkerParameters) : Coroutine
         val user = FirebaseAuth.getInstance().currentUser
         if (user == null) {
             ReminderScheduler.sync(applicationContext, emptyList(), null)
+            BirthdayScheduler.sync(applicationContext, emptyList(), null)
             return Result.success()
         }
         return try {
@@ -37,6 +38,12 @@ class ReminderSyncWorker(context: Context, params: WorkerParameters) : Coroutine
             ChecklistNotifier.notify(applicationContext, user.uid, owners.distinct(), all)
             val events = all.filterNot { it.cancelled }
             ReminderScheduler.sync(applicationContext, events, user.uid)
+            // A failing birthday read (e.g. rules not deployed yet) must not hold back the event reminders above.
+            runCatching {
+                repository.fetchOwnBirthdays(user.uid) +
+                    owners.distinct().filter { it != user.uid }.flatMap { repository.fetchBirthdaysSharedWith(it, user.uid) }
+            }.onSuccess { BirthdayScheduler.sync(applicationContext, it, user.uid) }
+                .onFailure { Log.w(TAG, "Birthday sync failed", it) }
             val now = java.time.Instant.now()
             RequestNotifier.notifyNew(
                 applicationContext,

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import com.familycalendar.data.CalendarEvent
 import com.familycalendar.data.Occurrence
 import com.familycalendar.data.RequestStatus
+import com.familycalendar.ui.theme.BirthdayColor
 import com.familycalendar.ui.theme.CalendarColor
 import com.familycalendar.ui.theme.CalendarPalette
 import com.familycalendar.ui.theme.paletteColor
@@ -75,6 +76,10 @@ fun occurrencesByDay(occurrences: List<Occurrence>, range: ClosedRange<LocalDate
 }
 
 fun Map<String, Int>.colorFor(ownerId: String) = paletteColor(this[ownerId])
+
+/** Birthdays have their own color; everything else takes its calendar's color. */
+fun Map<String, Int>.colorFor(event: CalendarEvent): CalendarColor =
+    if (event.isBirthday) BirthdayColor else colorFor(event.ownerId)
 
 /**
  * Color of a checkmark: the color of the ticking person's calendar on this phone, or, if their calendar
@@ -178,7 +183,7 @@ fun EventChip(
     /** Narrow cells show only the title; the time would push it out of view. */
     roomForTime: Boolean = true,
 ) {
-    val look = eventLook(occurrence, colors.colorFor(occurrence.event.ownerId), zone)
+    val look = eventLook(occurrence, colors.colorFor(occurrence.event), zone)
     val showTime = roomForTime && !occurrence.event.allDay && !continuesBefore
     val (title, progress) = chipLabel(occurrence.event)
     val label = if (showTime) "${LocalDateTime.ofInstant(occurrence.start, zone).format(TimeFormatter)} $title" else title

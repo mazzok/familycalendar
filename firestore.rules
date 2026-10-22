@@ -5,6 +5,8 @@ rules_version = '2';
 //   calendars/{ownerId}/events/{id}      the owner's events; kind "checklist" = standalone checklist,
 //                                        map field "checklist" = shared items anyone with access may edit
 //   calendars/{ownerId}/viewers/{uid}    sharing invitations; status "pending" until the invitee accepts
+//   calendars/{ownerId}/birthdays/{id}   birthdays; id "self" = the owner's own (seen by all accepted viewers),
+//                                        others only by the viewers listed in "sharedWith"
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -83,6 +85,24 @@ service cloud.firestore {
         allow update: if isViewer()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checklist'])
           && request.resource.data.checklist is map;
+        allow delete: if isOwner();
+      }
+
+      // Birth dates never go into users/{uid}, which every signed-in user can read.
+      match /birthdays/{birthdayId} {
+        function validBirthday() {
+          let b = request.resource.data;
+          return b.name is string && b.month is int && b.month >= 1 && b.month <= 12
+            && b.day is int && b.day >= 1 && b.day <= 31
+            && b.sharedWith is list
+            && (birthdayId != 'self' || b.sharedWith.size() == 0);
+        }
+
+        // Viewers fetch "self" by id and list the rest with where("sharedWith", "array-contains", uid).
+        allow get: if isOwner()
+          || (isViewer() && (birthdayId == 'self' || request.auth.uid in resource.data.sharedWith));
+        allow list: if isOwner() || (isViewer() && request.auth.uid in resource.data.sharedWith);
+        allow create, update: if isOwner() && validBirthday();
         allow delete: if isOwner();
       }
 

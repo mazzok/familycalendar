@@ -23,6 +23,12 @@ class CalendarRepository(
     private fun calendar(ownerId: String) = db.collection("calendars").document(ownerId)
     private fun events(ownerId: String) = calendar(ownerId).collection("events")
     private fun viewers(ownerId: String) = calendar(ownerId).collection("viewers")
+    private fun birthdays(ownerId: String) = calendar(ownerId).collection("birthdays")
+
+    // Viewers may only read the account birthday and the ones shared with them (firestore.rules), and rules
+    // are not filters: the shared ones must be queried with exactly that constraint.
+    private fun sharedBirthdaysQuery(ownerId: String, myUid: String): Query =
+        birthdays(ownerId).whereArrayContains("sharedWith", myUid)
 
     private fun sharedWithMeQuery(uid: String): Query =
         db.collectionGroup("viewers").whereEqualTo("viewerUid", uid)
@@ -154,6 +160,71 @@ class CalendarRepository(
             )
         )
 
+    /** All birthdays of [ownerId]'s own calendar, the account birthday included. */
+    fun observeOwnBirthdays(ownerId: String): Flow<List<Birthday>> = callbackFlow {
+        val registration = birthdays(ownerId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.w(TAG, "Birthdays listener for $ownerId failed", error)
+                trySend(emptyList())
+                return@addSnapshotListener
+            }
+            trySend(snapshot?.documents?.mapNotNull { it.toBirthday() }.orEmpty())
+        }
+        awaitClose { registration.remove() }
+    }
+
+    /** [ownerId]'s account birthday plus the birthdays they shared with [myUid]. Empty parts if access is lost. */
+    fun observeBirthdaysSharedWith(ownerId: String, myUid: String): Flow<List<Birthday>> = callbackFlow {
+        var self: Birthday? = null
+        var shared = emptyList<Birthday>()
+        fun emit() = trySend(listOfNotNull(self) + shared)
+        val selfRegistration = birthdays(ownerId).document(SELF_BIRTHDAY_ID).addSnapshotListener { snapshot, error ->
+            if (error != null) Log.w(TAG, "Account birthday listener for $ownerId failed", error)
+            self = snapshot?.takeIf { it.exists() }?.toBirthday()
+            emit()
+        }
+        val sharedRegistration = sharedBirthdaysQuery(ownerId, myUid).addSnapshotListener { snapshot, error ->
+            if (error != null) Log.w(TAG, "Shared birthdays listener for $ownerId failed", error)
+            shared = snapshot?.documents?.mapNotNull { it.toBirthday() }.orEmpty()
+            emit()
+        }
+        awaitClose {
+            selfRegistration.remove()
+            sharedRegistration.remove()
+        }
+    }
+
+    suspend fun fetchOwnBirthdays(ownerId: String): List<Birthday> =
+        birthdays(ownerId).get().await().documents.mapNotNull { it.toBirthday() }
+
+    suspend fun fetchBirthdaysSharedWith(ownerId: String, myUid: String): List<Birthday> {
+        val self = birthdays(ownerId).document(SELF_BIRTHDAY_ID).get().await().takeIf { it.exists() }?.toBirthday()
+        return listOfNotNull(self) + sharedBirthdaysQuery(ownerId, myUid).get().await().documents.mapNotNull { it.toBirthday() }
+    }
+
+    // Not awaited, like event writes.
+    fun saveBirthday(birthday: Birthday): Task<Void> {
+        val doc = if (birthday.id.isBlank()) birthdays(birthday.ownerId).document() else birthdays(birthday.ownerId).document(birthday.id)
+        return doc.set(birthday.toMap())
+    }
+
+    fun deleteBirthday(birthday: Birthday): Task<Void> =
+        birthdays(birthday.ownerId).document(birthday.id).delete()
+
+    fun setBirthdayShared(ownerId: String, birthdayId: String, viewerUid: String, shared: Boolean): Task<Void> =
+        birthdays(ownerId).document(birthdayId).update(
+            "sharedWith", if (shared) FieldValue.arrayUnion(viewerUid) else FieldValue.arrayRemove(viewerUid),
+        )
+
+    /** Takes all of [ownerId]'s birthdays away from [viewerUid], e.g. when they stop seeing the calendar. */
+    suspend fun unshareBirthdays(ownerId: String, viewerUid: String) {
+        val docs = birthdays(ownerId).whereArrayContains("sharedWith", viewerUid).get().await().documents
+        if (docs.isEmpty()) return
+        val batch = db.batch()
+        docs.forEach { batch.update(it.reference, "sharedWith", FieldValue.arrayRemove(viewerUid)) }
+        batch.commit().await()
+    }
+
     /**
      * Invites the user registered with [email] to see [ownerId]'s calendar. They get access only after
      * accepting ([acceptInvitation]). Returns the invitee's display name.
@@ -185,6 +256,8 @@ class CalendarRepository(
                 else "$name hasn't answered your invitation yet."
             )
         }
+        // Someone invited again starts with nothing shared, even if they left on their own (they can't edit our birthdays).
+        unshareBirthdays(ownerId, match.id)
         viewers(ownerId).document(match.id).set(
             mapOf(
                 "ownerId" to ownerId,

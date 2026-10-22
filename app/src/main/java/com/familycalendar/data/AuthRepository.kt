@@ -29,11 +29,17 @@ class AuthRepository(
         writeProfile(user, user.displayName ?: user.email.orEmpty().substringBefore('@'))
     }
 
-    suspend fun register(name: String, email: String, password: String) {
+    /** [birthday]: optional date of birth (month, day, year); stored as the account birthday, never in `users/`. */
+    suspend fun register(name: String, email: String, password: String, birthday: Birthday? = null) {
         val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
             ?: error("Registration failed")
         user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name.trim()).build()).await()
         writeProfile(user, name.trim())
+        if (birthday != null) {
+            CalendarRepository(db).saveBirthday(
+                birthday.copy(id = SELF_BIRTHDAY_ID, ownerId = user.uid, ownerName = name.trim(), name = name.trim(), sharedWith = emptySet())
+            ).addOnFailureListener { Log.w(TAG, "Writing birthday failed", it) }
+        }
     }
 
     fun signOut() = auth.signOut()

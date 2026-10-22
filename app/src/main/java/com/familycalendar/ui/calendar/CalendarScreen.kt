@@ -65,9 +65,12 @@ fun CalendarScreen(
     onOpenOccurrence: (Occurrence) -> Unit,
     onNewEvent: (start: LocalDateTime, allDay: Boolean, kind: EventKind) -> Unit,
     onOpenSharing: () -> Unit,
+    onOpenBirthdays: () -> Unit,
+    onNewBirthday: () -> Unit,
 ) {
     val user by viewModel.user.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
+    val birthdays by viewModel.birthdays.collectAsStateWithLifecycle()
     val shared by viewModel.sharedWithMe.collectAsStateWithLifecycle()
     val invitations by viewModel.invitations.collectAsStateWithLifecycle()
     val requests by viewModel.openRequests.collectAsStateWithLifecycle()
@@ -93,14 +96,16 @@ fun CalendarScreen(
         CalendarViewMode.SCHEDULE -> date..date.plusDays(SCHEDULE_DAYS - 1)
         else -> mode.visibleDays(date).let { it.first()..it.last() }
     }
-    val occurrences = remember(events, hidden, visibleRange) {
+    val occurrences = remember(events, birthdays, hidden, visibleRange) {
         val series = events?.filter { it.ownerId !in hidden } ?: return@remember null
-        RecurrenceExpander.expand(
+        val expanded = RecurrenceExpander.expand(
             series,
             visibleRange.start.atStartOfDay(zone).toInstant(),
             visibleRange.endInclusive.plusDays(1).atStartOfDay(zone).toInstant(),
             zone,
         )
+        val cakes = birthdayOccurrences(birthdays.filter { it.ownerId !in hidden }, visibleRange, zone)
+        (expanded + cakes).sortedWith(compareBy({ it.start }, { it.end }))
     }
 
     Scaffold(
@@ -110,7 +115,7 @@ fun CalendarScreen(
                 actions = {
                     TodayButton(onClick = viewModel::goToToday)
                     ViewModeMenu(mode, onSelect = viewModel::setViewMode)
-                    OverflowMenu(onOpenSharing = onOpenSharing, onSignOut = viewModel::signOut)
+                    OverflowMenu(onOpenSharing = onOpenSharing, onOpenBirthdays = onOpenBirthdays, onSignOut = viewModel::signOut)
                 },
             )
         },
@@ -132,6 +137,10 @@ fun CalendarScreen(
                     DropdownMenuItem(text = { Text("Checklist") }, onClick = {
                         newMenu = false
                         onNewEvent(LocalDate.now().atStartOfDay(), true, EventKind.CHECKLIST)
+                    })
+                    DropdownMenuItem(text = { Text("Birthday") }, onClick = {
+                        newMenu = false
+                        onNewBirthday()
                     })
                 }
             }
@@ -261,12 +270,13 @@ private fun ViewModeMenu(mode: CalendarViewMode, onSelect: (CalendarViewMode) ->
 }
 
 @Composable
-private fun OverflowMenu(onOpenSharing: () -> Unit, onSignOut: () -> Unit) {
+private fun OverflowMenu(onOpenSharing: () -> Unit, onOpenBirthdays: () -> Unit, onSignOut: () -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("Sharing & colors") }, onClick = { open = false; onOpenSharing() })
+            DropdownMenuItem(text = { Text("Birthdays") }, onClick = { open = false; onOpenBirthdays() })
             DropdownMenuItem(text = { Text("Sign out") }, onClick = { open = false; onSignOut() })
         }
     }
