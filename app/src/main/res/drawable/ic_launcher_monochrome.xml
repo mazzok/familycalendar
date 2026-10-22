@@ -1,0 +1,27 @@
+<!-- Themed-icon layer (Android 13+): only the alpha counts, the launcher picks the color. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Page outline, header and rings -->
+    <path android:strokeColor="#000000" android:strokeWidth="2.5"
+        android:pathData="M35,33h38a6,6 0,0 1,6 6v36a6,6 0,0 1,-6 6h-38a6,6 0,0 1,-6 -6v-36a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#000000"
+        android:pathData="M35,33h38a6,6 0,0 1,6 6v7h-50v-7a6,6 0,0 1,6 -6z" />
+    <path android:fillColor="#000000"
+        android:pathData="M41.5,27a2.5,2.5 0,0 1,2.5 2.5v6a2.5,2.5 0,0 1,-5 0v-6a2.5,2.5 0,0 1,2.5 -2.5zM66.5,27a2.5,2.5 0,0 1,2.5 2.5v6a2.5,2.5 0,0 1,-5 0v-6a2.5,2.5 0,0 1,2.5 -2.5z" />
+    <!-- Empty days, faint -->
+    <path android:fillColor="#000000" android:fillAlpha="0.35"
+        android:pathData="M57,50.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM67.5,50.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM36,60.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM46.5,60.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM57,60.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM46.5,70.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5z" />
+    <!-- Days with events -->
+    <path android:fillColor="#000000"
+        android:pathData="M46.5,50.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM67.5,60.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM36,70.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5zM57,70.5h4.5a1.5,1.5 0,0 1,1.5 1.5v4a1.5,1.5 0,0 1,-1.5 1.5h-4.5a1.5,1.5 0,0 1,-1.5 -1.5v-4a1.5,1.5 0,0 1,1.5 -1.5z" />
+    <!-- Ticked checklist days -->
+    <path android:strokeColor="#000000" android:strokeWidth="1.8"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M36.2,54.2l1.8,1.8l3.4,-3.6M67.7,74.2l1.8,1.8l3.4,-3.6" />
+    <!-- Today -->
+    <path android:strokeColor="#000000" android:strokeWidth="2"
+        android:pathData="M52.95,64a6.3,6.3 0,1 0,12.6 0a6.3,6.3 0,1 0,-12.6 0" />
+</vector>
