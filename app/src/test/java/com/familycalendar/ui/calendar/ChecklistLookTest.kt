@@ -22,6 +22,16 @@ class ChecklistLookTest {
     fun `plain events are unchanged`() = assertEquals("Dinner", displayTitle(CalendarEvent(title = "Dinner")))
 
     @Test
+    fun `chip keeps a standalone list's progress apart, so it isn't clipped with the title`() =
+        assertEquals("☑ Einkauf" to "1/3", chipLabel(CalendarEvent(title = "Einkauf", kind = EventKind.CHECKLIST, checklist = items)))
+
+    @Test
+    fun `chip of other events is the display title alone`() {
+        assertEquals("Grillabend ☑" to null, chipLabel(CalendarEvent(title = "Grillabend", checklist = items)))
+        assertEquals("Dinner" to null, chipLabel(CalendarEvent(title = "Dinner")))
+    }
+
+    @Test
     fun `check color follows the calendar color, else is stable per uid`() {
         assertEquals(paletteColor(4), mapOf("ben" to 4).checkColor("ben"))
         assertEquals(emptyMap<String, Int>().checkColor("zoe"), emptyMap<String, Int>().checkColor("zoe"))

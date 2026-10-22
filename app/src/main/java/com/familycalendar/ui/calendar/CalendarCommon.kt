@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDecoration
 import com.familycalendar.data.CalendarEvent
 import com.familycalendar.data.Occurrence
@@ -84,10 +85,18 @@ fun Map<String, Int>.checkColor(uid: String): CalendarColor =
 
 /** Title as shown in the calendar: a standalone checklist shows its progress, an attached one a mark. */
 fun displayTitle(event: CalendarEvent): String = when {
-    event.isChecklist -> "☑ ${event.title} ${event.checklistDone}/${event.checklist.size}"
+    event.isChecklist -> chipLabel(event).let { (title, progress) -> "$title $progress" }
     event.hasChecklist -> "${event.title} ☑"
     else -> event.title
 }
+
+/**
+ * Title and, for a standalone checklist, its progress, as separate parts: a narrow chip clips the
+ * title but keeps the progress visible.
+ */
+fun chipLabel(event: CalendarEvent): Pair<String, String?> =
+    if (event.isChecklist) "☑ ${event.title}" to "${event.checklistDone}/${event.checklist.size}"
+    else displayTitle(event) to null
 
 private val DarkText = Color(0xFF202124)
 
@@ -171,18 +180,12 @@ fun EventChip(
 ) {
     val look = eventLook(occurrence, colors.colorFor(occurrence.event.ownerId), zone)
     val showTime = roomForTime && !occurrence.event.allDay && !continuesBefore
-    val label = if (showTime) "${LocalDateTime.ofInstant(occurrence.start, zone).format(TimeFormatter)} ${displayTitle(occurrence.event)}"
-    else displayTitle(occurrence.event)
+    val (title, progress) = chipLabel(occurrence.event)
+    val label = if (showTime) "${LocalDateTime.ofInstant(occurrence.start, zone).format(TimeFormatter)} $title" else title
     val start = if (continuesBefore) 0.dp else 4.dp
     val end = if (continuesAfter) 0.dp else 4.dp
-    Text(
-        label,
-        color = look.text,
-        textDecoration = look.decoration,
-        fontSize = 11.sp,
-        lineHeight = 13.sp,
-        maxLines = 1,
-        overflow = TextOverflow.Clip,
+    val style = TextStyle(color = look.text, textDecoration = look.decoration, fontSize = 11.sp, lineHeight = 13.sp)
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = if (continuesBefore) 0.dp else 1.dp, end = if (continuesAfter) 0.dp else 1.dp, top = 1.dp, bottom = 1.dp)
@@ -190,7 +193,11 @@ fun EventChip(
             .then(look.background)
             .clickable(onClick = onClick)
             .padding(horizontal = 3.dp, vertical = 1.dp),
-    )
+    ) {
+        // Clip at the edge instead of wrapping: "☑ Groceries" would wrap after the ☑ and lose the rest.
+        Text(label, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, modifier = Modifier.weight(1f))
+        if (progress != null) Text(" $progress", style = style, maxLines = 1, softWrap = false)
+    }
 }
 
 @Composable
