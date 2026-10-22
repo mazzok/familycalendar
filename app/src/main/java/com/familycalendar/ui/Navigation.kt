@@ -27,11 +27,14 @@ private object Routes {
     const val SHARING = "sharing"
     const val EVENT = "event?key={key}&occ={occ}&start={start}&allDay={allDay}&kind={kind}"
     const val BIRTHDAYS = "birthdays"
-    const val BIRTHDAY = "birthday?owner={owner}&id={id}"
+    const val BIRTHDAY = "birthday?owner={owner}&id={id}&view={view}"
 
-    /** An existing birthday of [ownerId]'s calendar, or a new one of my own when [id] is `null`. */
-    fun birthday(ownerId: String?, id: String?) =
-        "birthday?owner=${Uri.encode(ownerId.orEmpty())}&id=${Uri.encode(id.orEmpty())}"
+    /**
+     * An existing birthday of [ownerId]'s calendar, or a new one of my own when [id] is `null`.
+     * [viewOnly]: just show it (tapped in the calendar); birthdays are edited from the birthday list.
+     */
+    fun birthday(ownerId: String?, id: String?, viewOnly: Boolean = false) =
+        "birthday?owner=${Uri.encode(ownerId.orEmpty())}&id=${Uri.encode(id.orEmpty())}&view=$viewOnly"
 
     /** An existing event; [occurrenceStart] says which occurrence of a repeating series was tapped. */
     fun event(key: String, occurrenceStart: Instant) =
@@ -62,7 +65,7 @@ fun AppNavigation(viewModel: MainViewModel) {
             CalendarScreen(
                 viewModel = viewModel,
                 onOpenOccurrence = {
-                    if (it.event.isBirthday) nav.navigate(Routes.birthday(it.event.ownerId, it.event.id))
+                    if (it.event.isBirthday) nav.navigate(Routes.birthday(it.event.ownerId, it.event.id, viewOnly = true))
                     else nav.navigate(Routes.event(it.event.key, it.start))
                 },
                 onNewEvent = { start, allDay, kind -> nav.navigate(Routes.newEvent(start, allDay, kind)) },
@@ -108,12 +111,14 @@ fun AppNavigation(viewModel: MainViewModel) {
             arguments = listOf(
                 navArgument("owner") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("view") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { entry ->
             BirthdayEditScreen(
                 viewModel = viewModel,
                 ownerId = entry.arguments?.getString("owner")?.takeIf { it.isNotBlank() },
                 birthdayId = entry.arguments?.getString("id")?.takeIf { it.isNotBlank() },
+                viewOnly = entry.arguments?.getBoolean("view") ?: false,
                 onBack = { nav.popBackStack() },
             )
         }

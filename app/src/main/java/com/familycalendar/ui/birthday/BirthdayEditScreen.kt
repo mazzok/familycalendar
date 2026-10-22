@@ -41,18 +41,26 @@ import java.time.LocalDate
 
 /**
  * Creates or edits one of my entered birthdays, edits my account birthday ([SELF_BIRTHDAY_ID]), or shows
- * someone else's read-only. [birthdayId] `null` = a new one of my own.
+ * someone else's read-only. [birthdayId] `null` = a new one of my own. [viewOnly] shows even my own
+ * read-only (opened from the calendar; editing happens from the birthday list).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BirthdayEditScreen(viewModel: MainViewModel, ownerId: String?, birthdayId: String?, onBack: () -> Unit) {
+fun BirthdayEditScreen(
+    viewModel: MainViewModel,
+    ownerId: String?,
+    birthdayId: String?,
+    onBack: () -> Unit,
+    viewOnly: Boolean = false,
+) {
     val user by viewModel.user.collectAsStateWithLifecycle()
     val birthdays by viewModel.birthdays.collectAsStateWithLifecycle()
     val viewers by viewModel.myViewers.collectAsStateWithLifecycle()
     val myName by viewModel.myName.collectAsStateWithLifecycle()
     val isNew = birthdayId == null
     val existing = birthdayId?.let { id -> birthdays.firstOrNull { it.id == id && it.ownerId == ownerId } }
-    val editable = isNew || ownerId == user?.uid
+    val mine = ownerId == user?.uid
+    val editable = isNew || (mine && !viewOnly)
     val isAccount = birthdayId == SELF_BIRTHDAY_ID
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
@@ -89,7 +97,7 @@ fun BirthdayEditScreen(viewModel: MainViewModel, ownerId: String?, birthdayId: S
                             isNew -> "New birthday"
                             isAccount && editable -> "My birthday"
                             editable -> "Edit birthday"
-                            else -> "${existing?.ownerName.orEmpty()}'s birthday entry"
+                            else -> "Birthday"
                         }
                     )
                 },
@@ -122,7 +130,12 @@ fun BirthdayEditScreen(viewModel: MainViewModel, ownerId: String?, birthdayId: S
                 Text(b.label(b.nextDate(LocalDate.now()).year), style = MaterialTheme.typography.headlineSmall)
                 Text(b.dateText(), style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    if (b.isAccount) "${b.ownerName}'s own birthday" else "Added by ${b.ownerName}",
+                    when {
+                        mine && b.isAccount -> "Your birthday · change it under Birthdays in the menu"
+                        mine -> "Added by you · change it under Birthdays in the menu"
+                        b.isAccount -> "${b.ownerName}'s own birthday"
+                        else -> "Added by ${b.ownerName}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -44,7 +44,8 @@ There are two sources of birthdays:
     2. My entered birthdays, sorted by next occurrence; tap to edit, with delete.
     3. Birthdays shared with me (account birthdays of people whose calendars I see, and entered birthdays
        others shared with me), read-only, labelled "from <name>".
-- Tapping a birthday chip in the calendar opens the edit form if it's mine, otherwise a read-only view.
+- Tapping a birthday chip in the calendar opens a read-only view, also for my own birthdays. Birthdays are
+  edited only from the birthday list.
 - Calendar display:
   - all-day, repeats yearly, in every view (month, week, day, schedule).
   - its own color, distinct from all person colors (builder's call on the exact shade; intent: a warm
