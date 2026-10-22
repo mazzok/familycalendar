@@ -3,8 +3,6 @@ package com.familycalendar.ui.calendar
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
-import java.time.temporal.WeekFields
-import java.util.Locale
 
 enum class CalendarViewMode(val label: String) {
     SCHEDULE("Schedule"),
@@ -30,6 +28,7 @@ enum class CalendarViewMode(val label: String) {
     }
 }
 
-fun firstDayOfWeek(): DayOfWeek = WeekFields.of(Locale.getDefault()).firstDayOfWeek
+/** Weeks always start on Monday, whatever the phone's language would suggest. */
+fun firstDayOfWeek(): DayOfWeek = DayOfWeek.MONDAY
 
 fun LocalDate.startOfWeek(): LocalDate = with(TemporalAdjusters.previousOrSame(firstDayOfWeek()))

@@ -1,7 +1,6 @@
 package com.familycalendar.ui.calendar
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,7 +33,9 @@ import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-private val DayNumberHeight = 24.dp
+/** Room above the event bars: the today circle plus its top gap. */
+private val DayNumberHeight = 34.dp
+private val TodayCircle = 26.dp
 
 /** First and last day shown in the month grid (whole weeks). */
 fun monthGridRange(month: YearMonth): ClosedRange<LocalDate> {
@@ -73,15 +76,16 @@ fun MonthView(
         weeks.forEach { weekStart ->
             val days = List(7) { weekStart.plusDays(it.toLong()) }
             val weekEvents = days.flatMap { byDay[it].orEmpty() }.distinctBy { it.key }
+            // Like Google Calendar: only a thin line between weeks, no lines between days.
+            HorizontalDivider(thickness = 0.5.dp, color = lineColor)
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                // Grid cells with day numbers; tapping a cell opens that day.
+                // Day numbers; tapping anywhere in a day opens it.
                 Row(Modifier.fillMaxSize()) {
                     days.forEach { day ->
                         Box(
                             Modifier
                                 .weight(1f)
                                 .fillMaxSize()
-                                .border(0.25.dp, lineColor)
                                 .clickable { onDayClick(day) },
                         ) {
                             DayNumber(day, isToday = day == today, inMonth = YearMonth.from(day) == month)
@@ -106,17 +110,19 @@ fun MonthView(
 
 @Composable
 private fun DayNumber(day: LocalDate, isToday: Boolean, inMonth: Boolean) {
-    Box(Modifier.fillMaxWidth().padding(top = 2.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
         Box(
             Modifier
-                .size(20.dp)
+                .size(TodayCircle)
                 .clip(CircleShape)
                 .then(if (isToday) Modifier.background(MaterialTheme.colorScheme.primary) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
+            // Fixed dp-based size: with a large system font the number would outgrow the circle.
             Text(
                 day.dayOfMonth.toString(),
-                fontSize = 11.sp,
+                fontSize = with(LocalDensity.current) { 12.dp.toSp() },
+                maxLines = 1,
                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                 color = when {
                     isToday -> MaterialTheme.colorScheme.onPrimary
